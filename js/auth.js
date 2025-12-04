@@ -3,7 +3,18 @@
 
 class AuthManager {
     constructor() {
-        this.API_BASE = 'http://localhost:3002/api';
+        // Detect environment and set appropriate API base
+        const isLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+
+        if (isLocal) {
+            // Local development
+            this.API_BASE = 'http://localhost:3002/api';
+        } else {
+            // Production - use Cloud Run URL
+            // This can be overridden by setting window.AUTH_API_URL in index.html
+            this.API_BASE = window.AUTH_API_URL || 'https://webroot-auth-api-XXXXXXXXXX.run.app/api';
+        }
+
         this.providers = ['google', 'github', 'linkedin', 'microsoft', 'facebook'];
         this.currentUser = null;
         this.initializeAuth();

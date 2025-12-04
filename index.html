@@ -1519,7 +1519,6 @@
         
         // Application State
         const AppState = {
-            currentUser: null,
             currentSection: 'home',
             currentTab: 'welcome',
             isAuthenticated: false,
@@ -2084,8 +2083,10 @@
         }
 
         // Initialize the application
-        document.addEventListener('DOMContentLoaded', function() {
+ document.addEventListener('DOMContentLoaded', async function() { // <--- 1. MAKE IT ASYNC
             
+            await initializeAuth(); // <--- 2. ADD THIS LINE
+
             // Setup tab click handlers
             setupTabHandlers();
             
@@ -2111,7 +2112,7 @@
             setupFilterHandlers();
             
             // Close modal when clicking outside
-            document.getElementById('auth-modal').addEventListener('click', function(e) {
+          document.getElementById('auth-modal').addEventListener('click', function(e) {
                 if (e.target === this) {
                     hideAuthModal();
                 }

@@ -12,6 +12,9 @@
 
     <link rel="stylesheet" href="../css/common.css">
     <link rel="stylesheet" href="../css/shared-styles.css">
+    <!-- GitHub Auth Styling for minimal widget -->
+    <link rel="stylesheet" href="../../projects/css/issues.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
         // Load submodule names by parsing .gitmodules from GitHub.
         if (!window.teamSubmodulesPromise) {
@@ -147,6 +150,11 @@
         /* Hide the 'Show states' control button - not needed when legend is visible */
         #toggle-state-counts-btn { display: none !important; }
     </style>
+
+
+    <!-- Include Projects Hub Issues Manager for GitHub Auth -->
+    <!-- Only loads in minimal mode when list=modelteam -->
+    <script src="../../projects/js/issues.js"></script>
 
     <!--
     Activate after default map turned off
@@ -496,6 +504,38 @@
     /* Context lines remain muted (identical on both sides) */
     .sb-row.sb-context .sb-code { background: transparent; }
     .sb-row { border-bottom: 1px solid rgba(0,0,0,0.03); }
+
+    /* Hover entire diff row highlight and per-line analyze action */
+    /* Use inset box-shadow to overlay a subtle highlight without removing
+       existing added/removed backgrounds. */
+    .sb-row:hover td {
+        box-shadow: inset 0 0 0 9999px rgba(59,130,246,0.04);
+        transition: box-shadow 0.12s ease;
+    }
+    .sb-action { width: 40px; text-align: center; vertical-align: middle; }
+    .sb-analyze-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        padding: 6px;
+        border-radius: 6px;
+        color: var(--text-secondary);
+        opacity: 0;
+        transform: translateY(0) scale(1);
+        transition: opacity 0.12s ease, transform 0.12s ease;
+    }
+    /* Show the analyzing icon only when hovering the row and make it larger on hover */
+    .sb-row:hover .sb-analyze-btn {
+        opacity: 1;
+        color: var(--text-primary);
+        transform: translateY(-1px) scale(1.22);
+    }
+    .sb-analyze-btn:focus {
+        outline: 3px solid rgba(59,130,246,0.18);
+        outline-offset: 2px;
+    }
 
     /* Replacements: left side removed (red), right side added (green) with stronger tints */
     .sb-row.sb-replaced .sb-code.sb-left { background: rgba(254,202,202,0.34); }
@@ -1605,6 +1645,49 @@
             padding-bottom: 8px;
             border-bottom: 2px solid rgba(59, 130, 246, 0.2);
         }
+
+        /* Pull/Push button styling for webroot card */
+        .submodule-card .btn-pull, .submodule-card .btn-push {
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 60px;
+            justify-content: center;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+            border: 1px solid transparent;
+            box-shadow: 0 6px 14px -8px rgba(2,6,23,0.12);
+        }
+
+        .submodule-card .btn-pull {
+            background: linear-gradient(180deg, #34d399 0%, #10b981 100%);
+            color: white;
+            border-color: rgba(16,185,129,0.9);
+        }
+
+        .submodule-card .btn-pull:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 10px 30px -12px rgba(16,185,129,0.35);
+        }
+
+        .submodule-card .btn-push {
+            background: linear-gradient(180deg, #fb923c 0%, #f97316 100%);
+            color: white;
+            border-color: rgba(249,115,22,0.9);
+        }
+
+        .submodule-card .btn-push:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 10px 30px -12px rgba(249,115,22,0.35);
+        }
+
+        /* Small icon style inside buttons */
+        .submodule-card .btn-pull svg, .submodule-card .btn-push svg { width: 14px; height: 14px; display: inline-block; vertical-align: middle; }
+
         
         #list-title {
             border: none !important;
@@ -2655,7 +2738,7 @@
                         <option value="custom">Choose File...</option>
                     </select>
                     <button class="btn btn-primary" id="get-participants">
-                        <span class="loading-spinner" id="participants-spinner" style="display: none;"></span>
+                        <span id="participants-spinner" style="display: none;"></span>
                         Get List
                     </button>
                 </div>
@@ -2687,6 +2770,9 @@
                         </div>
                         <div class="menu-item" id="refresh-csv-toggle" style="display: none;">
                             <span>Refresh lists.csv</span>
+                        </div>
+                        <div class="menu-item" id="refresh-local-toggle" style="display: none;">
+                            <span>Refresh Locally</span>
                         </div>
                     </div>
                 </div>
@@ -2793,12 +2879,15 @@
                     </div>
                 </div>
                 <div id="insightsContent" class="insights-content">
-                    <div style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 20px;">
+                    <div style="color: var(--text-secondary); font-style: italic; padding: 20px;">
                         Click "Claude Insights" or "Gemini Insights" for AI analysis. Use the ↻ refresh button for custom prompts.
                     </div>
                 </div>
             </div>
-            
+
+            <!-- GitHub Token Authentication (only visible when Repos button is clicked) -->
+            <div id="github-auth-container" style="display: none;"></div>
+
             <!-- Contributions Panel -->
             <div id="contributionsPanel" style="display: none; margin-top: 16px;">
                 <div class="insights-header">
@@ -2809,18 +2898,7 @@
                     </div>
                 </div>
                 <div id="contributionsContent" class="insights-content">
-                    <div id="githubTokenPrompt" style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 8px 20px 4px 20px;">
-                        Contributions panel — optionally paste a GitHub personal access token to raise API limits for live PR fetches.
-                    </div>
-                    <div style="display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap;">
-                        <div id="githubTokenControls" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                            <input id="githubTokenInput" type="password" class="form-control" placeholder="Paste GitHub token" style="max-width:420px;" aria-label="GitHub token input">
-                            <button class="btn btn-primary" id="saveGithubTokenBtn" onclick="saveGithubToken()">Save</button>
-                            <button class="btn btn-secondary" id="clearGithubTokenBtn" onclick="clearGithubToken()">Clear</button>
-                        </div>
-                        <div id="githubTokenStatus" style="color:var(--text-secondary); font-size:12px; flex:1; min-width:160px;"></div>
-                    </div>
-                    
+
                     <!-- Filter row for submodule cards -->
                     <div id="prsFilters" style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                         <div style="color:var(--text-secondary); font-size:13px; margin-right:6px;">Show:</div>
@@ -2879,7 +2957,7 @@
                         <button class="btn btn-primary" id="apply-raw-data">Display Changes</button>
                         <button class="btn btn-secondary" id="revert-raw-data">Revert</button>
                     </div>
-                    <small class="form-help">Edit the JSON data and click "Display Changes" to update the participant list. Click "Revert" to restore original data.</small>
+                    <small class="form-help">Edit the JSON data and click "Display Changes" to update the list. Click "Revert" to restore original data.</small>
                 </div>
             </div>
             
@@ -3004,9 +3082,6 @@
                 </div>
             </div>
         </div>
-        
-        <!-- Gemini Setup Container (shown when Gemini key is not available) -->
-        <div id="gemini-setup-container" style="display: none;"></div>
         
         <!-- Prompt Modal for custom AI prompts -->
         <div class="prompt-modal hidden" id="promptModal">
@@ -3851,6 +3926,9 @@
             const visible = panel.style.display === 'block';
             if (visible) {
                 panel.style.display = 'none';
+                // Hide GitHub auth container when closing
+                const authContainer = document.getElementById('github-auth-container');
+                if (authContainer) authContainer.style.display = 'none';
             } else {
                 panel.style.display = 'block';
                 // Ensure insights panel is hidden when showing contributions
@@ -3858,6 +3936,19 @@
                 showContributionsSection();
                 // Load aggregated submodule PRs (if available)
                 try { loadSubmodulePRs(); } catch (e) { console.warn('loadSubmodulePRs missing', e); }
+
+                // Show GitHub auth container and initialize projects list
+                const authContainer = document.getElementById('github-auth-container');
+                if (authContainer) {
+                    authContainer.style.display = 'block';
+                    console.log('👁️ GitHub auth container visible (Repos button clicked)');
+                }
+
+                // Initialize projects list if not already done
+                if (window.githubAuthWidget && typeof window.githubAuthWidget.initializeProjectsList === 'function') {
+                    window.githubAuthWidget.initializeProjectsList();
+                    console.log('📋 Initializing projects list');
+                }
             }
         }
 
@@ -3950,8 +4041,13 @@
 
                 // Attempt proxy for each repo first (no global /api/github/ping). If proxy
                 // returns OK or 403 (auth issue), use its response; otherwise fall back to
-                // the public GitHub API. Include session token when available for both paths.
-                const sessionToken = (function(){ try { return sessionStorage.getItem('github_token') || null } catch(e){ return null } })();
+                // the public GitHub API. Include token when available for both paths.
+                // Check localStorage first (shared with Projects Hub), then sessionStorage
+                const sessionToken = (function(){
+                    try {
+                        return localStorage.getItem('github_token') || sessionStorage.getItem('github_token') || null;
+                    } catch(e){ return null }
+                })();
 
                 const fetches = repos.map(r => (async () => {
                     const publicUrl = `https://api.github.com/repos/${encodeURIComponent(r.owner)}/${encodeURIComponent(r.repo)}/pulls?state=open&per_page=100`;
@@ -3970,6 +4066,126 @@
 
                 // Build a responsive grid of submodule cards using DOM nodes (safer than string concat)
                 const cardsContainer = document.createElement('div');
+
+                // Helper: trigger server-side git script via admin API
+                // Use a configurable API base for development. You can set window.__API_BASE__ from
+                // the browser console or a build-time variable. Defaults to http://localhost:8081.
+                const API_BASE = (typeof window !== 'undefined' && window.__API_BASE__) ? window.__API_BASE__ : 'http://localhost:8082';
+
+                function showOutputPopup(text, title) {
+                    try {
+                        // Remove existing popup if any
+                        const existing = document.getElementById('git-output-modal');
+                        if (existing) existing.remove();
+
+                        const modal = document.createElement('div');
+                        modal.id = 'git-output-modal';
+                        modal.style.position = 'fixed';
+                        modal.style.left = '0';
+                        modal.style.top = '0';
+                        modal.style.width = '100%';
+                        modal.style.height = '100%';
+                        modal.style.background = 'rgba(0,0,0,0.5)';
+                        modal.style.display = 'flex';
+                        modal.style.alignItems = 'center';
+                        modal.style.justifyContent = 'center';
+                        modal.style.zIndex = '99999';
+
+                        const box = document.createElement('div');
+                        box.style.width = 'min(900px, 90%)';
+                        box.style.maxHeight = '80%';
+                        box.style.overflow = 'auto';
+                        box.style.background = 'var(--bg, #fff)';
+                        box.style.color = 'var(--text, #111)';
+                        box.style.borderRadius = '8px';
+                        box.style.padding = '16px';
+                        box.style.boxShadow = '0 8px 32px rgba(0,0,0,0.25)';
+
+                        const hdr = document.createElement('div');
+                        hdr.style.display = 'flex';
+                        hdr.style.justifyContent = 'space-between';
+                        hdr.style.alignItems = 'center';
+                        hdr.style.marginBottom = '8px';
+
+                        const h = document.createElement('strong');
+                        h.textContent = title || 'Script output';
+                        hdr.appendChild(h);
+
+                        const closeBtn = document.createElement('button');
+                        closeBtn.textContent = 'Close';
+                        closeBtn.className = 'btn btn-sm';
+                        closeBtn.addEventListener('click', () => modal.remove());
+                        hdr.appendChild(closeBtn);
+
+                        const pre = document.createElement('pre');
+                        pre.style.whiteSpace = 'pre-wrap';
+                        pre.style.background = 'transparent';
+                        pre.style.fontSize = '13px';
+                        pre.style.lineHeight = '1.4';
+                        pre.style.margin = '0';
+                        pre.textContent = text || '';
+
+                        box.appendChild(hdr);
+                        box.appendChild(pre);
+                        modal.appendChild(box);
+
+                        // Close on ESC
+                        const escHandler = (ev) => { if (ev.key === 'Escape') modal.remove(); };
+                        document.addEventListener('keydown', escHandler, { once: true });
+
+                        document.body.appendChild(modal);
+                    } catch (e) {
+                        // fallback to alert
+                        alert((title ? title + "\n\n" : '') + String(text));
+                    }
+                }
+
+                async function runAdminGitAction(owner, repo, action, statusEl) {
+                    try {
+                        if (!['push','pull'].includes(action)) {
+                            throw new Error('Unsupported action: ' + action);
+                        }
+                        // Use GitHub token instead of ADMIN_KEY. Stored in localStorage as 'github_token'.
+                        let githubToken = null;
+                        try { githubToken = localStorage.getItem('github_token'); } catch(e) { githubToken = null; }
+                        if (!githubToken) {
+                            githubToken = prompt('Enter GitHub token (scoped to allow repo push) to perform git ' + action + ' on ' + owner + '/' + repo + ':');
+                            if (!githubToken) return;
+                            try { localStorage.setItem('github_token', githubToken); } catch(e) {}
+                        }
+                        if (statusEl) {
+                            statusEl.textContent = `${action} running...`;
+                            statusEl.style.opacity = '1';
+                        }
+                        const resp = await fetch(`${API_BASE}/api/admin/git`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': 'token ' + githubToken
+                            },
+                            body: JSON.stringify({ action })
+                        });
+                        let text = '';
+                        try { const j = await resp.json(); text = (j.stdout || '') + '\n' + (j.stderr || ''); } catch(e){ text = await resp.text().catch(()=>String(resp.status)); }
+                        if (statusEl) {
+                            statusEl.textContent = resp.ok ? `${action} completed` : `${action} failed (${resp.status})`;
+                            statusEl.title = text || '';
+                        }
+
+                        // Show stdout/stderr in a popup for visibility
+                        showOutputPopup(text, resp.ok ? `${action} output` : `${action} output (error ${resp.status})`);
+
+                        return { ok: resp.ok, text };
+                    } catch (err) {
+                        if (statusEl) {
+                            statusEl.textContent = 'Error';
+                            statusEl.title = String(err);
+                        } else {
+                            alert('Error: ' + String(err));
+                        }
+                        return { ok: false, text: String(err) };
+                    }
+                }
                 cardsContainer.className = 'submodule-cards';
                 for (const entry of responses) {
                     const r = entry.r;
@@ -4018,6 +4234,45 @@
                     header.appendChild(localLink);
                     header.appendChild(h4);
                     header.appendChild(ghLink);
+
+                    // If this is the local webroot repo, show push/pull buttons
+                    try {
+                        if (String(r.owner).toLowerCase() === 'modelearth' && String(r.repo).toLowerCase() === 'webroot') {
+                            const btnGroup = document.createElement('div');
+                            btnGroup.style.display = 'flex';
+                            btnGroup.style.alignItems = 'center';
+                            btnGroup.style.gap = '8px';
+
+                            const pullBtn = document.createElement('button');
+                            pullBtn.className = 'btn btn-sm btn-pull';
+                            pullBtn.textContent = 'Pull';
+                            pullBtn.style.padding = '6px 10px';
+                            pullBtn.addEventListener('click', function(ev) {
+                                ev.stopPropagation();
+                                runAdminGitAction(r.owner, r.repo, 'pull', statusSpan);
+                            });
+
+                            const pushBtn = document.createElement('button');
+                            pushBtn.className = 'btn btn-sm btn-push';
+                            pushBtn.textContent = 'Push';
+                            pushBtn.style.padding = '6px 10px';
+                            pushBtn.addEventListener('click', function(ev) {
+                                ev.stopPropagation();
+                                runAdminGitAction(r.owner, r.repo, 'push', statusSpan);
+                            });
+
+                            const statusSpan = document.createElement('span');
+                            statusSpan.style.fontSize = '12px';
+                            statusSpan.style.color = 'var(--text-secondary)';
+                            statusSpan.style.marginLeft = '6px';
+                            statusSpan.textContent = '';
+
+                            btnGroup.appendChild(pullBtn);
+                            btnGroup.appendChild(pushBtn);
+                            btnGroup.appendChild(statusSpan);
+                            header.appendChild(btnGroup);
+                        }
+                    } catch (e) { console.warn('push/pull buttons render failed', e); }
                     card.appendChild(header);
 
                     if (entry.err) {
@@ -4510,7 +4765,12 @@
             content.innerHTML = '<div style="text-align:center; padding:20px">Loading pull request diffs...</div>';
             overlay.style.display = 'flex';
 
-            const token = (function(){ try { return sessionStorage.getItem('github_token') || null } catch(e){ return null } })();
+            // Check localStorage first (shared with Projects Hub), then sessionStorage
+            const token = (function(){
+                try {
+                    return localStorage.getItem('github_token') || sessionStorage.getItem('github_token') || null;
+                } catch(e){ return null }
+            })();
             const headers = { Accept: 'application/vnd.github.v3+json' };
             if (token) headers.Authorization = `token ${token}`;
 
@@ -4692,6 +4952,8 @@
                                 fileHtml += '<td class="sb-code sb-left"><pre class="sb-pre">' + (r.leftText || '') + '</pre></td>';
                                 fileHtml += '<td class="sb-line-num">' + (r.rightNum || '') + '</td>';
                                 fileHtml += '<td class="sb-code sb-right"><pre class="sb-pre">' + (r.rightText || '') + '</pre></td>';
+                                // Action column: hidden analyze icon that appears on row hover
+                                fileHtml += '<td class="sb-action" data-left="' + (r.leftNum || '') + '" data-right="' + (r.rightNum || '') + '"><button class="sb-analyze-btn" title="Analyze line" aria-label="Analyze line">🔬</button></td>';
                                 fileHtml += '</tr>';
                             });
                             fileHtml += '</tbody></table></div>';
@@ -4706,6 +4968,77 @@
                 });
 
                 content.innerHTML = parts.join('');
+
+                // Attach analyze button handlers: show a small temporary toast and log the line numbers.
+                try {
+                    document.querySelectorAll('.sb-analyze-btn').forEach(btn => {
+                        // Hover: prepare a CodeChat prompt with the surrounding diff context so the user
+                        // can open CodeChat and the prompt will be prefilled.
+                        btn.addEventListener('mouseenter', (ev) => {
+                            try {
+                                const td = btn.closest('.sb-action');
+                                const left = td ? td.getAttribute('data-left') : '';
+                                const right = td ? td.getAttribute('data-right') : '';
+                                // Find the nearest file name and patch text by walking up the DOM
+                                const fileEl = btn.closest('.pr-diff-file');
+                                const filename = fileEl ? (fileEl.querySelector('.pr-diff-filename > div') || {}).textContent : '';
+                                // Collect a small snippet of the left/right texts from the row
+                                const leftCode = btn.closest('tr') ? (btn.closest('tr').querySelector('.sb-code.sb-left .sb-pre') || {}).textContent : '';
+                                const rightCode = btn.closest('tr') ? (btn.closest('tr').querySelector('.sb-code.sb-right .sb-pre') || {}).textContent : '';
+                                const snippet = (leftCode || rightCode || '').trim().split('\n').slice(0,6).join('\n');
+                                // Build a repo-prefixed path: use current pathname (no domain, no hash)
+                                const navPath = (window.location.pathname || '') + (window.location.search || '');
+                                const navClean = navPath.replace(/#.*$/, '').replace(/\/$/, '');
+                                const safeFile = (filename || '').toString().replace(/^\//, '');
+                                // Use only the repo name (no URL) before the filename, e.g. /my-repo/path/to/file
+                                const repoNameSegment = (typeof repo !== 'undefined' && repo) ? ('/' + repo) : '';
+                                const combinedPath = repoNameSegment + '/' + safeFile;
+                                const prompt = `Please analyze the following diff for file ${combinedPath || '(unknown)'}:\n\n${snippet}\n\nProvide a concise explanation of what changed and potential issues to watch for.`;
+                                try {
+                                    localStorage.setItem('codechat_prefill_prompt', prompt);
+                                    // Also write structured metadata including repo and filename so CodeChat can select repository
+                                    // navigation: pathname+search (no domain or hash); filename: nav + /repo/<filename>
+                                    const navPathOnly = (window.location.pathname || '') + (window.location.search || '');
+                                    const navCleanOnly = navPathOnly.replace(/#.*$/, '').replace(/\/$/, '');
+                                    const safeFilename = (filename || '').toString().replace(/^\//, '');
+                                    const repoSegment = (typeof repo !== 'undefined' && repo) ? '/' + repo : '';
+                                    const repoLocal = repoSegment + '/' + safeFilename;
+                                    const meta = {
+                                        repo: `${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+                                        navigation: navCleanOnly,
+                                        filename: repoLocal,
+                                        pr: (d && d.pr && d.pr.number) ? d.pr.number : null
+                                    };
+                                    localStorage.setItem('codechat_prefill_meta', JSON.stringify(meta));
+                                } catch (e) {
+                                    // ignore quota errors
+                                }
+                            } catch (e) { console.warn('prepare codechat prompt failed', e); }
+                        });
+
+                        // Click: provide quick feedback toast and open CodeChat in a new tab/window
+                        btn.addEventListener('click', (ev) => {
+                            ev.stopPropagation();
+                            const td = btn.closest('.sb-action');
+                            const left = td ? td.getAttribute('data-left') : '';
+                            const right = td ? td.getAttribute('data-right') : '';
+                            console.log('Analyze line clicked', { left, right });
+                            // lightweight toast feedback
+                            const toast = document.createElement('div');
+                            toast.className = 'analyze-toast';
+                            toast.textContent = `Opening CodeChat — analyzing L:${left || '-'} R:${right || '-'}`;
+                            Object.assign(toast.style, { position: 'fixed', right: '20px', bottom: '20px', padding: '8px 12px', background: 'rgba(2,6,23,0.9)', color: 'white', borderRadius: '8px', zIndex: 99999, fontSize: '13px' });
+                            document.body.appendChild(toast);
+                            setTimeout(() => { try { toast.remove(); } catch(e){} }, 2200);
+
+                            // Open CodeChat in a new tab — it will read the prefill prompt from localStorage on load.
+                            const chatUrl = (function(){
+                                try { return new URL('../../codechat/chat/index.html', window.location.href).href; } catch(e){ return '/codechat/chat/index.html'; }
+                            })();
+                            window.open(chatUrl, '_blank');
+                        });
+                    });
+                } catch (e) { console.warn('attach analyze handlers failed', e); }
 
                 // modal contributors removed; showing only PR author per PR above
 
@@ -4731,65 +5064,6 @@
             }
         }
 
-        // GitHub token helpers (sessionStorage only)
-        function saveGithubToken() {
-            const input = document.getElementById('githubTokenInput');
-            const status = document.getElementById('githubTokenStatus');
-            if (!input) return;
-            const token = input.value.trim();
-            try {
-                if (!token) {
-                    // clear session store
-                    try { sessionStorage.removeItem('github_token'); } catch(e){}
-                    if (status) status.textContent = 'No token saved.';
-                    try { loadSubmodulePRs(); } catch (e) { /* ignore */ }
-                    try { restoreGithubTokenStatus(); } catch (e) {}
-                    return;
-                }
-                // Always store only in sessionStorage for privacy
-                sessionStorage.setItem('github_token', token);
-                if (status) status.textContent = 'Token saved for this session.';
-                input.value = '';
-                try { loadSubmodulePRs(); } catch (e) { /* ignore */ }
-                try { restoreGithubTokenStatus(); } catch (e) {}
-            } catch (e) {
-                if (status) status.textContent = 'Unable to save token.';
-            }
-        }
-
-        function clearGithubToken() {
-            const status = document.getElementById('githubTokenStatus');
-            try {
-                try { sessionStorage.removeItem('github_token'); } catch(e){}
-                if (status) status.textContent = 'Token cleared.';
-                try { loadSubmodulePRs(); } catch (e) { /* ignore */ }
-                try { restoreGithubTokenStatus(); } catch (e) {}
-            } catch (e) {
-                if (status) status.textContent = 'Unable to clear token.';
-            }
-        }
-
-        // Restore status text on panel open and toggle token UI/prompt
-        function restoreGithubTokenStatus(){
-            try {
-                const status = document.getElementById('githubTokenStatus');
-                const tokenControls = document.getElementById('githubTokenControls');
-                const tokenPrompt = document.getElementById('githubTokenPrompt');
-                let token = null;
-                try { token = sessionStorage.getItem('github_token'); } catch(e){}
-                if (status) {
-                    status.textContent = token ? 'Token present for this session.' : 'No token saved.';
-                }
-                if (tokenControls) {
-                    tokenControls.style.display = token ? 'none' : '';
-                }
-                if (tokenPrompt) {
-                    tokenPrompt.style.display = token ? 'none' : '';
-                }
-            } catch(e){}
-        }
-    // initialize token UI on script load
-    try { restoreGithubTokenStatus(); } catch(e){}
         // Prefetch minimal repo summaries (commits count and updated time) to avoid
         // making per-repo API calls when the Contributions panel is opened.
         // This will try a site-local proxy first (/api/github/html/...), then
@@ -4805,8 +5079,12 @@
             const tryFetch = async (url, useProxy) => {
                 try {
                     const headers = {};
-                    // include session token if proxy requires it
-                    const token = (function(){ try { return sessionStorage.getItem('github_token') || null } catch(e){ return null } })();
+                    // Check localStorage first (shared with Projects Hub), then sessionStorage
+                    const token = (function(){
+                        try {
+                            return localStorage.getItem('github_token') || sessionStorage.getItem('github_token') || null;
+                        } catch(e){ return null }
+                    })();
                     if (token && useProxy) headers.Authorization = `token ${token}`;
                     const resp = await fetch(url, { headers, cache: 'no-store' });
                     if (!resp || !resp.ok) return null;
@@ -5261,7 +5539,7 @@ ${JSON.stringify(completeAnalysisData, null, 2)}`,
                     displayCachedInsights(cacheKey, 'claude');
                 } else {
                     const content = document.getElementById('insightsContent');
-                    content.innerHTML = '<div style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 20px;">Click "Claude Insights" or "Gemini Insights" for AI analysis. Use the ↻ refresh button for custom prompts.</div>';
+                    content.innerHTML = '<div style="color: var(--text-secondary); font-style: italic; padding: 20px;">Click "Claude Insights" or "Gemini Insights" for AI analysis. Use the ↻ refresh button for custom prompts.</div>';
                 }
             }
         }
@@ -5303,7 +5581,7 @@ ${JSON.stringify(completeAnalysisData, null, 2)}`,
                     displayCachedInsights(cacheKey, 'gemini');
                 } else {
                     const content = document.getElementById('insightsContent');
-                    content.innerHTML = '<div style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 20px;">Click "Claude Insights" or "Gemini Insights" for AI analysis. Use the ↻ refresh button for custom prompts.</div>';
+                    content.innerHTML = '<div style="color: var(--text-secondary); font-style: italic; padding: 20px;">Click "Claude Insights" or "Gemini Insights" for AI analysis. Use the ↻ refresh button for custom prompts.</div>';
                 }
             }
         }
@@ -8735,7 +9013,7 @@ ${JSON.stringify(completeAnalysisData, null, 2)}`,
                 
                 // Validate that it's an array
                 if (!Array.isArray(editedData)) {
-                    throw new Error('Data must be an array of participants');
+                    throw new Error('Data must be an array.');
                 }
                 
                 // Update the global participants data
@@ -9915,7 +10193,10 @@ ${JSON.stringify(completeAnalysisData, null, 2)}`,
             
             if (listParam === 'all') {
                 fileSelect.value = 'all';
-                selectedFile = 'all';
+                // Get the correct selectedFile from the "all" option's data-url
+                const allOption = Array.from(fileSelect.options).find(option => option.value === 'all');
+                selectedFile = allOption?.getAttribute('data-url') || 'all';
+                console.log('Set selectedFile for list=all to:', selectedFile);
             } else {
                 selectedFile = selectedOption.getAttribute('data-url') || selectedOption.value;
             }
@@ -9945,7 +10226,28 @@ ${JSON.stringify(completeAnalysisData, null, 2)}`,
             const allListsOption = document.createElement('option');
             allListsOption.value = 'all';
             allListsOption.textContent = 'All Lists';
-            allListsOption.setAttribute('data-url', 'all');
+            
+            // Set the correct data-url based on site type
+            if (isGeoSite()) {
+                // For geo sites, point to show.json
+                const currentPath = window.location.pathname;
+                let showJsonPath;
+                
+                if (currentPath.includes('/team/projects')) {
+                    showJsonPath = 'map/show.json';
+                } else if (currentPath.includes('/team/')) {
+                    showJsonPath = 'projects/map/show.json';
+                } else {
+                    showJsonPath = 'team/projects/map/show.json';
+                }
+                
+                allListsOption.setAttribute('data-url', showJsonPath);
+                console.log('Set "all" option data-url for geo site to:', showJsonPath);
+            } else {
+                // For regular sites, use the Google Sheets URL
+                allListsOption.setAttribute('data-url', 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSxfv7lxikjrmro3EJYGE_134vm5HdDszZKt4uKswHhsNJ_-afSaG9RoA4oeNV656r4mTuG3wTu38pM/pub?output=csv');
+                console.log('Set "all" option data-url for regular site to Google Sheets CSV');
+            }
             
             // Insert as the first option
             fileSelect.insertBefore(allListsOption, fileSelect.firstChild);
@@ -10232,6 +10534,34 @@ ${JSON.stringify(completeAnalysisData, null, 2)}`,
             document.getElementById('loadStatus').innerHTML = '<div class="loading-message">Loading list of lists...</div>';
             document.getElementById('loadStatus').style.display = 'block';
             
+            // Check if this is a geo site - if so, load from show.json using existing flow
+            if (isGeoSite()) {
+                console.log('Geo site detected - loading list of lists from show.json using existing flow');
+                
+                // Calculate the correct relative path to show.json
+                let showJsonPath;
+                const currentPath = window.location.pathname;
+                
+                if (currentPath.includes('/team/projects')) {
+                    showJsonPath = 'map/show.json';
+                } else if (currentPath.includes('/team/')) {
+                    showJsonPath = 'projects/map/show.json';
+                } else {
+                    showJsonPath = 'team/projects/map/show.json';
+                }
+                
+                // Set selectedFile to show.json path and use existing loading flow
+                selectedFile = showJsonPath;
+                console.log('Set selectedFile to:', selectedFile);
+                
+                // Update the dropdown to show "all" is selected
+                fileSelect.value = 'all';
+                
+                // Use the existing data loading process
+                getSubsetUsingSnapshot();
+                return;
+            }
+            
             // Load and display the meta-list Google Sheet with all feeds
             const masterSheetUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSxfv7lxikjrmro3EJYGE_134vm5HdDszZKt4uKswHhsNJ_-afSaG9RoA4oeNV656r4mTuG3wTu38pM/pub?output=csv';
             
@@ -10265,20 +10595,22 @@ ${JSON.stringify(completeAnalysisData, null, 2)}`,
                     
                     // Parse CSV data with robust parser that handles newlines in quoted fields
                     const rows = parseCSVRobust(csvText);
-                    if (points.length === 0) {
+                    if (rows.length === 0) {
                         throw new Error('No data found in CSV');
                     }
-                    
-                        try {
-                            if (contEl) {
-                                const listParam = (typeof getHash === 'function') ? getHash().list : null;
-                                if (listParam === 'modelteam') {
-                                    contEl.style.display = 'block';
-                                } else {
-                                    contEl.style.display = 'none';
-                                }
+
+                    // Define contEl before using it
+                    const contEl = document.getElementById('participants-map-container');
+                    try {
+                        if (contEl) {
+                            const listParam = (typeof getHash === 'function') ? getHash().list : null;
+                            if (listParam === 'modelteam') {
+                                contEl.style.display = 'block';
+                            } else {
+                                contEl.style.display = 'none';
                             }
-                        } catch (e) { if (contEl) contEl.style.display = 'block'; }
+                        }
+                    } catch (e) { if (contEl) contEl.style.display = 'block'; }
                     const headers = rows[0];
                     const feedsData = [];
                     
@@ -10313,7 +10645,8 @@ ${JSON.stringify(completeAnalysisData, null, 2)}`,
                             });
                             
                             // Filter entries for geo sites (check the 'List' field)
-                            if (isGeoSiteCheck) {
+                            // Only apply geo filtering when allowedGeoOptions is defined (when using default Google Sheets)
+                            if (isGeoSiteCheck && typeof allowedGeoOptions !== 'undefined') {
                                 const listValue = feedEntry['List'] || feedEntry['list'];
                                 if (!allowedGeoOptions.includes(listValue)) {
                                     continue; // Skip this entry for geo sites
@@ -10953,6 +11286,18 @@ ${JSON.stringify(completeAnalysisData, null, 2)}`,
             // Show "Refresh lists.csv" option only on localhost
             if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
                 document.getElementById('refresh-csv-toggle').style.display = 'block';
+
+                // Show "Refresh Local" option if map widget has dataset_api_slow or dataset_via_api
+                // and dataset is a local file
+                if (window.listingsApp && window.listingsApp.config) {
+                    const config = window.listingsApp.config;
+                    const hasAPIConfig = config.dataset_api_slow || config.dataset_via_api;
+                    const hasLocalDataset = config.dataset && !config.dataset.startsWith('http');
+
+                    if (hasAPIConfig && hasLocalDataset) {
+                        document.getElementById('refresh-local-toggle').style.display = 'block';
+                    }
+                }
             }
             
             // Load snapshot if no auto-data loading occurred
@@ -10968,6 +11313,13 @@ ${JSON.stringify(completeAnalysisData, null, 2)}`,
             
             document.getElementById('list-feeds-toggle').addEventListener('click', showAllLists);
             document.getElementById('refresh-csv-toggle').addEventListener('click', refreshListsCSV);
+            document.getElementById('refresh-local-toggle').addEventListener('click', function() {
+                if (window.listingsApp && typeof window.listingsApp.refreshLocalData === 'function') {
+                    window.listingsApp.refreshLocalData();
+                } else {
+                    console.error('ListingsApp refreshLocalData function not available');
+                }
+            });
             
             document.getElementById('fullscreen-toggle').addEventListener('click', toggleFullscreen);
             document.getElementById('condensed-toggle').addEventListener('click', toggleCondensed);
@@ -12230,6 +12582,82 @@ ${JSON.stringify(completeAnalysisData, null, 2)}`,
         </div>
     </div>
 </div>
+
+<!-- GitHub Minimal Auth Widget Initialization -->
+<script>
+    // Global reference to minimal auth widget
+    let githubAuthWidget = null;
+
+    // Initialize minimal GitHub auth widget only when list=modelteam
+    function initializeGitHubAuth() {
+        const container = document.getElementById('github-auth-container');
+        if (!container) return;
+
+        // Debug localStorage token
+        const storedToken = localStorage.getItem('github_token');
+        console.log('🔐 localStorage check:', {
+            hasToken: !!storedToken,
+            tokenLength: storedToken?.length || 0,
+            tokenPreview: storedToken ? storedToken.substring(0, 4) + '...' : 'none'
+        });
+
+        // Get hash parameters
+        const hash = (typeof getHash === 'function') ? getHash() : {};
+
+        console.log('🔍 GitHub Auth Check - hash.list:', hash.list);
+
+        // Only initialize for list=modelteam, but don't show container yet
+        // Container will be shown when user clicks "Repos" button
+        if (hash.list === 'modelteam') {
+            // Initialize widget if not already done
+            if (!githubAuthWidget) {
+                try {
+                    console.log('✅ Initializing GitHub auth in minimal mode');
+
+                    // Create GitHubIssuesManager with showProject: false
+                    // Projects list will be loaded when user clicks "Repos" button
+                    githubAuthWidget = new GitHubIssuesManager('github-auth-container', {
+                        showProject: false
+                    });
+
+                    // Make globally accessible for toggleContributions
+                    window.githubAuthWidget = githubAuthWidget;
+
+                    console.log('✅ GitHub auth widget initialized successfully');
+                } catch (error) {
+                    console.error('❌ Failed to initialize GitHub auth widget:', error);
+                }
+            }
+
+            // Keep container hidden until "Repos" button is clicked
+            container.style.display = 'none';
+            console.log('🔒 GitHub auth container ready but hidden (will show when Repos button clicked)');
+        } else {
+            // Hide container for other lists
+            container.style.display = 'none';
+            console.log('🔒 GitHub auth container hidden (list is not modelteam)');
+        }
+    }
+
+    // Listen for hash changes
+    document.addEventListener('hashChangeEvent', function() {
+        console.log('🔗 hashChangeEvent fired');
+        initializeGitHubAuth();
+    });
+
+    window.addEventListener('hashchange', function() {
+        console.log('🔄 hashchange fired');
+        initializeGitHubAuth();
+    });
+
+    // Initialize on page load
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeGitHubAuth);
+    } else {
+        // DOM is already ready
+        setTimeout(initializeGitHubAuth, 300);
+    }
+</script>
 
 </body>
 </html>

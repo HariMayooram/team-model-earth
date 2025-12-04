@@ -1,6 +1,6 @@
 // src/main.rs
 use actix_cors::Cors;
-use actix_web::{web, App, HttpResponse, HttpServer, Result, middleware};
+use actix_web::{web, App, HttpResponse, HttpServer, Result, middleware, HttpRequest};
 use anyhow::Context;
 use chrono::{Utc, NaiveDate};
 use clap::{Parser, Subcommand};
@@ -28,6 +28,9 @@ mod gemini_insights;
 mod claude_insights;
 mod recommendations;
 mod oauth;
+mod prompts;
+mod semantic_search;
+mod api_integration;
 use recommendations::RecommendationRequest;
 use oauth::{OAuthConfig, UserSession, OAuthUrlResponse};
 
@@ -47,8 +50,8 @@ type SharedConfig = Arc<Mutex<Config>>;
 
 impl Config {
     fn from_env() -> anyhow::Result<Self> {
-        // Try to load from .env file first
-        dotenv::dotenv().ok();
+        // Try to load from .env file in docker directory
+        dotenv::from_path("../docker/.env").ok();
         
         // Also check for a config.toml file
         if let Ok(config_str) = std::fs::read_to_string("config.toml") {
@@ -76,9 +79,9 @@ impl Config {
     
     fn reload() -> anyhow::Result<Self> {
         log::info!("Reloading configuration from .env file");
-        
-        // Force reload of .env file by reading it directly and setting env vars
-        if let Ok(env_content) = std::fs::read_to_string(".env") {
+
+        // Force reload of .env file from docker directory by reading it directly and setting env vars
+        if let Ok(env_content) = std::fs::read_to_string("../docker/.env") {
             for line in env_content.lines() {
                 let line = line.trim();
                 if line.is_empty() || line.starts_with('#') {
@@ -198,8 +201,8 @@ fn start_env_watcher(config: SharedConfig) -> anyhow::Result<()> {
     let (tx, rx) = channel();
     let mut watcher = RecommendedWatcher::new(tx, NotifyConfig::default())?;
     
-    // Watch the .env file
-    let env_path = Path::new(".env");
+    // Watch the .env file in docker directory
+    let env_path = Path::new("../docker/.env");
     if env_path.exists() {
         watcher.watch(env_path, RecursiveMode::NonRecursive)?;
         log::info!("Started watching .env file for changes");
@@ -420,6 +423,16 @@ struct SaveCsvRequest {
     content: String,
 }
 
+// GitHub token endpoint - returns token from docker/.env if available
+async fn get_github_token() -> Result<HttpResponse> {
+    // Read GITHUB_PERSONAL_ACCESS_TOKEN from environment
+    let token = std::env::var("GITHUB_PERSONAL_ACCESS_TOKEN").ok();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "token": token
+    })))
+}
+
 // Health check endpoint
 async fn health_check(data: web::Data<Arc<ApiState>>) -> Result<HttpResponse> {
     match &data.db {
@@ -620,12 +633,12 @@ async fn restart_server() -> Result<HttpResponse> {
 async fn save_env_config(req: web::Json<SaveEnvConfigRequest>) -> Result<HttpResponse> {
     use std::fs::OpenOptions;
     use std::io::{BufRead, BufReader, Write};
-    
-    let env_path = ".env";
+
+    let env_path = "../docker/.env";
     let mut env_lines = Vec::new();
     let mut updated_keys = std::collections::HashSet::<String>::new();
-    
-    // Read existing .env file if it exists
+
+    // Read existing .env file from docker directory if it exists
     if let Ok(file) = std::fs::File::open(env_path) {
         let reader = BufReader::new(file);
         for line in reader.lines().map_while(Result::ok) {
@@ -721,17 +734,17 @@ async fn save_env_config(req: web::Json<SaveEnvConfigRequest>) -> Result<HttpRes
 // Create .env file from .env.example content
 async fn create_env_config(req: web::Json<CreateEnvConfigRequest>) -> Result<HttpResponse> {
     use std::fs;
-    
-    // Check if .env file already exists
-    if std::path::Path::new(".env").exists() {
+
+    // Check if .env file already exists in docker directory
+    if std::path::Path::new("../docker/.env").exists() {
         return Ok(HttpResponse::BadRequest().json(json!({
             "success": false,
             "error": ".env file already exists"
         })));
     }
-    
-    // Write the content to .env file
-    match fs::write(".env", &req.content) {
+
+    // Write the content to .env file in docker directory
+    match fs::write("../docker/.env", &req.content) {
         Ok(_) => {
             Ok(HttpResponse::Ok().json(json!({
                 "success": true,
@@ -2885,7 +2898,10 @@ async fn run_api_server(config: Config) -> anyhow::Result<()> {
     
     // Create persistent Claude session manager
     let claude_session_manager: ClaudeSessionManager = Arc::new(Mutex::new(ClaudeSession::new()));
-    
+
+    // Create API integration config for Cognito Forms
+    let cognito_config = api_integration::ApiConfig::cognito_forms();
+
     // Get server config from shared config
     let (server_host, server_port) = {
         let config_guard = shared_config.lock().unwrap();
@@ -2895,16 +2911,19 @@ async fn run_api_server(config: Config) -> anyhow::Result<()> {
     println!("Starting API server on {server_host}:{server_port}");
     let session_manager_clone = claude_session_manager.clone();
     
+    let cognito_config_clone = cognito_config.clone();
+
     HttpServer::new(move || {
         let cors = Cors::default()
             .allow_any_origin()
             .allow_any_method()
             .allow_any_header()
             .max_age(3600);
-        
+
         App::new()
             .app_data(web::Data::new(state.clone()))
             .app_data(web::Data::new(session_manager_clone.clone()))
+            .app_data(web::Data::new(cognito_config_clone.clone()))
             .wrap(cors)
             .wrap(middleware::Logger::default())
             .service(
@@ -2943,6 +2962,14 @@ async fn run_api_server(config: Config) -> anyhow::Result<()> {
                             .route("/usage/cli", web::get().to(get_gemini_usage_cli))
                             .route("/usage/website", web::get().to(get_gemini_usage_website))
                             .route("/analyze", web::post().to(gemini_insights::analyze_with_gemini))
+                    )
+                    .service(
+                        web::scope("/github")
+                            .route("/token", web::get().to(get_github_token))
+                    )
+                    .service(
+                        web::scope("/semantic-search")
+                            .route("", web::post().to(semantic_search::search_projects))
                     )
                     .service(
                         web::scope("/google")
@@ -2984,6 +3011,7 @@ async fn run_api_server(config: Config) -> anyhow::Result<()> {
                             .route("/hdf5", web::post().to(proxy_hdf5_file))
                     )
                     .route("/scrape", web::get().to(scrape_site))
+                    .route("/admin/git", web::post().to(run_git_script))
                     .service(
                         web::scope("/recommendations")
                             .route("", web::post().to(get_recommendations_handler))
@@ -3001,6 +3029,14 @@ async fn run_api_server(config: Config) -> anyhow::Result<()> {
                             .route("/projects", web::get().to(get_google_cloud_projects))
                             .route("/projects/mock", web::get().to(get_google_cloud_projects_mock))
                     )
+                    .service(
+                        web::scope("/cognito")
+                            .route("/test", web::get().to(api_integration::test_connection))
+                            .route("/forms", web::get().to(api_integration::list_forms))
+                            .route("/forms/{form_id}/entries", web::get().to(api_integration::get_form_entries))
+                            .route("/proxy", web::get().to(api_integration::proxy_cognito_request))
+                    )
+                    .route("/refresh-local", web::post().to(api_integration::refresh_local_file))
             )
     })
     .bind((server_host, server_port))?
@@ -3335,6 +3371,150 @@ fn extract_html_title(html: &str) -> Option<String> {
         }
     }
     None
+}
+
+// Admin: run git.sh script (protected by ADMIN_KEY env var)
+#[derive(Serialize)]
+struct ScriptResult {
+    success: bool,
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
+    error: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RunGitRequest {
+    // allowed actions: "push" | "pull" (optional)
+    action: Option<String>,
+}
+
+async fn run_git_script(req: HttpRequest, body: web::Json<RunGitRequest>) -> Result<HttpResponse> {
+    // Authenticate using a GitHub token passed by the client.
+    // Accept token in `Authorization` header (Bearer or token) or `x-github-token`.
+    // Validate token by calling GitHub API /user. If valid, pass it to the script as GITHUB_TOKEN
+    // so the server-side script can use it for HTTPS git operations.
+    let header_token = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .or_else(|| req.headers().get("x-github-token").and_then(|v| v.to_str().ok()).map(|s| s.to_string()));
+
+    let token = if let Some(mut t) = header_token {
+        // strip common prefixes
+        if t.to_lowercase().starts_with("bearer ") {
+            t = t[7..].to_string();
+        } else if t.to_lowercase().starts_with("token ") {
+            t = t[6..].to_string();
+        }
+        Some(t)
+    } else {
+        None
+    };
+
+    if token.is_none() {
+        return Ok(HttpResponse::Unauthorized().json(ScriptResult {
+            success: false,
+            code: None,
+            stdout: "".into(),
+            stderr: "".into(),
+            error: Some("Missing GitHub token in Authorization or x-github-token header".into()),
+        }));
+    }
+
+    // Validate token with GitHub API (/user)
+    let gh_token = token.unwrap();
+    let client = reqwest::Client::new();
+    let gh_resp = client
+        .get("https://api.github.com/user")
+        .header("User-Agent", "partner-tools")
+        .bearer_auth(&gh_token)
+        .send()
+        .await;
+
+    match gh_resp {
+        Ok(r) if r.status().is_success() => {
+            // token validated
+        }
+        Ok(r) => {
+            return Ok(HttpResponse::Unauthorized().json(ScriptResult {
+                success: false,
+                code: None,
+                stdout: "".into(),
+                stderr: format!("GitHub token rejected (HTTP {})", r.status()),
+                error: Some("Invalid GitHub token".into()),
+            }));
+        }
+        Err(e) => {
+            return Ok(HttpResponse::InternalServerError().json(ScriptResult {
+                success: false,
+                code: None,
+                stdout: "".into(),
+                stderr: format!("Failed to validate token: {}", e),
+                error: Some("Token validation failed".into()),
+            }));
+        }
+    }
+
+    // Determine repo dir and script path from env (safe defaults)
+    let repo_dir = std::env::var("WEBROOT_DIR").unwrap_or_else(|_| "/Users/sugandhab/Documents/GitHub/webroot".into());
+    let script_path = std::env::var("GIT_SCRIPT_PATH").unwrap_or_else(|_| "./git.sh".into());
+
+    // Build command
+    let mut cmd = tokio::process::Command::new(&script_path);
+    cmd.current_dir(repo_dir);
+    // Provide token to the child process so scripts can use it (via env GITHUB_TOKEN)
+    cmd.env("GITHUB_TOKEN", &gh_token);
+
+    // Validate and append allowed action arg if provided
+    if let Some(act) = body.action.as_ref() {
+        let action = act.trim().to_lowercase();
+        match action.as_str() {
+            "push" | "pull" => {
+                cmd.arg(action);
+            }
+            _ => {
+                return Ok(HttpResponse::BadRequest().json(ScriptResult {
+                    success: false,
+                    code: None,
+                    stdout: "".into(),
+                    stderr: "".into(),
+                    error: Some(format!("Invalid action: {}", action)),
+                }));
+            }
+        }
+    }
+
+    // Run with timeout
+    match tokio::time::timeout(tokio::time::Duration::from_secs(120), cmd.output()).await {
+        Ok(Ok(output)) => {
+            let code = output.status.code();
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            Ok(HttpResponse::Ok().json(ScriptResult {
+                success: output.status.success(),
+                code,
+                stdout,
+                stderr,
+                error: None,
+            }))
+        }
+        Ok(Err(e)) => Ok(HttpResponse::InternalServerError().json(ScriptResult {
+            success: false,
+            code: None,
+            stdout: "".into(),
+            stderr: "".into(),
+            error: Some(format!("Failed to run script: {}", e)),
+        })),
+        Err(_) => Ok(HttpResponse::InternalServerError().json(ScriptResult {
+            success: false,
+            code: None,
+            stdout: "".into(),
+            stderr: "".into(),
+            error: Some("Timed out".into()),
+        })),
+    }
 }
 
 #[actix_web::main]

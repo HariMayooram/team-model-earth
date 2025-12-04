@@ -1,0 +1,56 @@
+/* Natural Language Processing (NLP) Search Styles */
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 2rem;
+}
+
+input, button {
+    margin: 0.3rem;
+    padding: 0.5rem;
+    font-size: 1rem;
+}
+
+.card {
+    border: 1px solid #ccc;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    border-radius: 8px;
+}
+
+.searchbar {
+    margin-bottom: 1rem;
+}
+
+.suggestions-box {
+    background-color: #e8f5e9;
+    border: 1px solid #4CAF50;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.suggestions-box h3 {
+    margin-top: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.suggestions-box ul {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+}
+
+.suggestions-box li {
+    margin: 0.3rem 0;
+}
+
+.info-text {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}

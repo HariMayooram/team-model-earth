@@ -1,5 +1,27 @@
 {
- "liaisons": {
+  "visits": {
+    "shortTitle": "City Visits",
+    "menuTitle": "City Visits",
+    "listTitle": "City Visits",
+    "datatype": "csv",
+    "dataset_via_api_inactive": "https://www.cognitoforms.com/api/forms/298/entries",
+    "dataset_api_slow": "https://www.cognitoforms.com/api/forms/298/entries",
+    "dataset_omit": "Email,Entry,Form,TotalParticipants_IncrementBy",
+    "dataset": "../../../display/team/map/visits.csv",
+    "markerType": "google",
+    "nameColumn": "City",
+    "featuredColumns": ["Team", "Description", "StartDate", "TotalParticipants"],
+    "geoDataset": "cities.csv",
+    "geoColumns": ["City"],
+    "geoAggregate": ["TotalParticipants"],
+    "search": {
+      "In City": "City",
+      "In Team": "Team",
+      "In Description": "Description"
+    },
+    "datastates": ["GA"]
+  },
+  "liaisons": {
     "shortTitle": "Liaisons",
     "menuTitle": "Camera Ready Liaisons",
     "listTitle": "Camera Ready Communities",
@@ -12,9 +34,9 @@
     "int_required": "liaison_id"
   },
   "cities": {
-    "shortTitle": "City Visits",
-    "menuTitle": "City Visits",
-    "listTitle": "City Visits",
+    "shortTitle": "Georgia Cities",
+    "menuTitle": "Georgia Cities",
+    "listTitle": "Georgia Cities",
     "datatype": "csv",
     "dataset": "cities.csv",
     "markerType": "google",

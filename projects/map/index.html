@@ -36,7 +36,7 @@
 
     <script type="text/javascript" src="../../js/common.js" id="/team/js/common.js"></script>
     <script type="text/javascript" src="../../js/print-download.js"></script>
-    <script type="text/javascript" src="../../js/map.js?showmap=true&map=cities.us&source=trade.json" id="/team/js/map.js"></script><!-- ?loadMapData=true -->
+    <script type="text/javascript" src="../../js/map.js?showmap=true" id="/team/js/map.js"></script><!-- ?loadMapData=true -->
     <script>
         //loadTeamDataForLookup();
     </script>
@@ -48,8 +48,15 @@
 </head>
 <body>
     <div class="content contentpadding" style="padding-top:0px">
+        <!-- API Error Messages - Fixed position at top -->
+        <div id="api-error-container" style="position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 9999; max-width: 900px; width: 90%;"></div>
+
         <div id="mapwidget">
-            Requires a map hash value. <a href="#map=cities.us">View cities</a>
+            Requires a map hash value.
+
+            <span style="display:none" class="georgia"><a href="#map=cities">View cities</a></span>
+
+            <span class="georgia-hide"><a href="#map=dca">View DCA</a></span>
             <!--
             <div class="loading">
                 <div class="spinner"></div>

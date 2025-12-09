@@ -136,9 +136,22 @@ function updateFaviconPath() {
 }
 
 // API Configuration
-if (typeof API_BASE === 'undefined') {
-    var API_BASE = 'http://localhost:8081/api';
-}
+(function() {
+    if (typeof window.API_BASE !== 'undefined') {
+        console.log('API_BASE is already defined:', window.API_BASE);
+        return;
+    }
+
+    const isProduction = window.location.hostname.includes('github.io');
+    
+    // Define production and development URLs
+    const productionApiUrl = 'https://webroot-auth-api-336235334145.us-central1.run.app'; // Replace with your actual production URL
+    const developmentApiUrl = 'http://localhost:8081/api';
+
+    // Set API_BASE based on the environment
+    window.API_BASE = isProduction ? productionApiUrl : developmentApiUrl;
+    console.log(`API_BASE set to: ${window.API_BASE}`);
+})();
 
 // OS Detection functionality
 function detectOS() {

@@ -185,23 +185,28 @@ class AuthModal {
                 justify-content: center;
                 gap: 12px;
                 padding: 12px 16px;
-                border: 1px solid #e5e5e5;
+                border: 1px solid #E5E7EB;
                 border-radius: 8px;
-                background: white;
-                color: #333;
+                background: #FFFFFF;
+                color: #374151;
                 text-decoration: none;
-                font-size: 1.1rem;
+                font-size: 14px;
                 font-weight: 500;
                 cursor: pointer;
-                transition: all 0.2s;
+                transition: all 0.2s ease;
                 width: 100%;
             }
 
             .auth-btn:hover {
-                background: #f8f9fa;
-                border-color: #007bff;
+                background: #F9FAFB;
+                border-color: #D1D5DB;
                 transform: translateY(-1px);
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            }
+
+            .auth-btn:active {
+                transform: translateY(0);
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
             }
         `;
         document.head.appendChild(styles);
@@ -307,7 +312,8 @@ class AuthModal {
             const callbackURL = window.location.href;
 
             // Better Auth OAuth flow - POST to get OAuth URL
-            const response = await fetch('http://localhost:3002/api/auth/sign-in/social', {
+            const authApiUrl = window.AUTH_API_URL || 'http://localhost:3002/api';
+            const response = await fetch(`${authApiUrl}/auth/sign-in/social`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -439,7 +445,8 @@ class AuthModal {
 // Check if user is authenticated and update UI
 async function checkAuthSession() {
     try {
-        const response = await fetch('http://localhost:3002/api/auth-status', {
+        const authApiUrl = window.AUTH_API_URL || 'http://localhost:3002/api';
+        const response = await fetch(`${authApiUrl}/auth-status`, {
             credentials: 'include' // Send httpOnly cookie
         });
 

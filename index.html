@@ -18,22 +18,7 @@
     <script src="../localsite/js/localsite.js?showheader=true"></script>
 
     <script src="../localsite/js/jquery.min.js" id="/localsite/js/jquery.min.js"></script>
-
-    <script>
-    // Sign In button testing under localhost or harimayooram.github.io
-    document.addEventListener('DOMContentLoaded', function() {
-        const currentHost = window.location.hostname;
-        const currentPath = window.location.href;
-        const allowSignIn = currentHost.includes('localhost') || 
-                           currentHost === '127.0.0.1' || 
-                           currentPath.includes('harimayooram.github.io') ||
-                           currentHost.includes('geo') ||
-                           currentHost.includes('location');
-        if (allowSignIn) {
-            //document.getElementById('signInTeam').style.display = 'inline-block';
-        }
-    });
-    </script>
+    <script src="../auth-system/public/js/env-config.js"></script>
     <style>
         #sideIcons, #main-footer {
             displayX:none !important;

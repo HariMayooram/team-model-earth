@@ -734,22 +734,19 @@ class ListingsDisplay {
         return [];
     }
 
-    async loadAPIData(apiPath, config) {
-        // Determine the API URL to call
+        async loadAPIData(apiPath, config) {
+        // Use a configurable API_BASE, falling back to a sensible default for development
+        const API_BASE = window.API_BASE || 'http://localhost:8081/api';
         let apiUrl;
 
         if (apiPath.startsWith('https://www.cognitoforms.com')) {
-            // Cognito Forms URLs should be proxied through our Rust API server
-            // which will add authentication - use the generic proxy endpoint
             const encodedUrl = encodeURIComponent(apiPath);
-            apiUrl = `http://localhost:8081/api/cognito/proxy?url=${encodedUrl}`;
+            apiUrl = `${API_BASE}/cognito/proxy?url=${encodedUrl}`;
             console.log('Proxying Cognito Forms request:', apiPath, '→', apiUrl);
         } else if (apiPath.startsWith('http')) {
-            // Other external URLs are called directly
             apiUrl = apiPath;
         } else {
-            // Relative paths are resolved to local API server
-            apiUrl = `http://localhost:8081${apiPath}`;
+            apiUrl = `${API_BASE}${apiPath.startsWith('/') ? '' : '/'}${apiPath}`;
         }
 
         console.log('Fetching data from API:', apiUrl);
@@ -758,26 +755,18 @@ class ListingsDisplay {
             const response = await fetch(apiUrl);
 
             if (!response.ok) {
-                // Try to get detailed error from response body
                 let detailedError = response.statusText;
                 try {
                     const errorData = await response.json();
-                    if (errorData.error) {
-                        detailedError = errorData.error;
-                    } else if (errorData.message) {
-                        detailedError = errorData.message;
-                    }
+                    detailedError = errorData.error || errorData.message || detailedError;
                 } catch (e) {
                     console.warn('Could not parse error response:', e);
                 }
 
                 const errorMsg = `API request failed: ${response.status} ${detailedError}`;
                 console.error(errorMsg);
-
-                // Display error in debug messages
                 this.displayAPIError(apiUrl, response.status, detailedError, config);
 
-                // Fallback to CSV if API fails
                 if (config.dataset) {
                     console.log('Falling back to CSV dataset:', config.dataset);
                     this.displayDebugMessage('⚠️ Using CSV fallback: ' + config.dataset, 'warning');
@@ -790,55 +779,16 @@ class ListingsDisplay {
             }
 
             const apiResponse = await response.json();
-
-            console.log('API Response structure:', {
-                hasSuccess: !!apiResponse.success,
-                hasData: !!apiResponse.data,
-                dataType: typeof apiResponse.data,
-                isArray: Array.isArray(apiResponse.data),
-                dataLength: Array.isArray(apiResponse.data) ? apiResponse.data.length : 'N/A'
-            });
-
-            // Check if API response has the expected structure
             if (apiResponse.success && apiResponse.data) {
-                let entries;
-
-                // Check if data is already an array (bulk entries) or a single object (specific entry)
-                if (Array.isArray(apiResponse.data)) {
-                    entries = apiResponse.data;
-                    console.log(`Processing ${entries.length} entries from bulk API response`);
-                } else if (typeof apiResponse.data === 'object' && apiResponse.data !== null) {
-                    // Single entry - wrap in array
-                    entries = [apiResponse.data];
-                    console.log('Processing single entry from API response');
-                } else {
-                    entries = [];
-                    console.warn('Unexpected data format:', typeof apiResponse.data);
-                }
-
-                if (entries.length > 0) {
-                    // Log each entry as it's found
-                    entries.forEach((entry, index) => {
-                        console.log(`Entry #${index + 1}:`, {
-                            City: entry.City,
-                            Team: entry.Team,
-                            StartDate: entry.StartDate,
-                            TotalParticipants: entry.TotalParticipants
-                        });
-                    });
-
-                    console.log(`✅ Successfully loaded ${entries.length} entries from API`);
-                    this.displayDebugMessage(`✅ API Success: Loaded ${entries.length} entries`, 'success');
-                    return entries;
-                } else {
-                    console.warn('No entries found in response');
-                }
+                const entries = Array.isArray(apiResponse.data) ? apiResponse.data : [apiResponse.data];
+                console.log(`✅ Successfully loaded ${entries.length} entries from API`);
+                this.displayDebugMessage(`✅ API Success: Loaded ${entries.length} entries`, 'success');
+                return entries;
             }
 
             console.warn('API returned no data, falling back to CSV if available');
             this.displayDebugMessage('⚠️ API returned no data, using CSV fallback', 'warning');
 
-            // Fallback to CSV if API returns no data
             if (config.dataset) {
                 const datasetUrl = config.dataset.startsWith('http')
                     ? config.dataset
@@ -847,12 +797,10 @@ class ListingsDisplay {
             }
 
             return [];
-
         } catch (error) {
             console.error('API connection error:', error);
             this.displayAPIError(apiUrl, null, error.message, config);
 
-            // Fallback to CSV on connection error
             if (config.dataset) {
                 this.displayDebugMessage('⚠️ Using CSV fallback due to connection error', 'warning');
                 const datasetUrl = config.dataset.startsWith('http')
